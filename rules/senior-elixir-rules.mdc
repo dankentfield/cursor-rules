@@ -1,0 +1,609 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Senior Elixir Engineer - Cursor Rules
+
+# Use Concise Function Syntax for One-Liners
+When a function body is a single expression, use the shorter `do:` syntax instead of a `do` block.
+
+## Bad example
+```elixir   
+defp do_something(item) do
+  SomeModule.process(item)
+end
+```
+
+## Good example
+```elixir
+defp do_something(item), do: SomeModule.process(item)
+```
+
+
+# Use pipelining instead of reassigning variables multiple times
+
+## Bad example
+```elixir
+socket = assign(socket, :session_id, session.id)
+socket = do_something_with_data(socket)
+```
+
+## Good example
+```elixir
+socket =
+    socket
+    |> assign(:session_id, session.id)
+    |> do_something_with_data()
+```
+
+
+# Pattern Match on Function Heads Instead of Control Flow
+Use pattern matching in function definitions rather than `if`, `case`, or `cond` statements within the function body.
+
+## Bad example
+```elixir
+defp do_something(item) do
+  if item.type == :admin do
+    SomeModule.admin_process(item)
+  else
+    SomeModule.regular_process(item)
+  end
+end
+```
+
+## Good example
+```elixir
+defp do_something(%{type: :admin} = item), do: SomeModule.admin_process(item)
+defp do_something(item), do: SomeModule.regular_process(item)
+```
+
+# Use Guards Instead of Control Flow Statements
+Leverage guards for simple conditionals rather than `if`, `case`, or `with` statements.
+
+## Bad example
+```elixir
+defp do_something(item) do
+  if item.value >= 18 do
+    {:ok, item}
+  else
+    {:error, :invalid}
+  end
+end
+```
+
+## Good example
+```elixir
+defp do_something(%{value: value} = item) when value >= 18, do: {:ok, item}
+defp do_something(_item), do: {:error, :invalid}
+```
+
+# Prefer `with` Statements Over Nested Control Flow
+Use `with` statements to handle multiple operations that can fail, avoiding deeply nested `case` or `if` statements.
+
+## Bad example
+```elixir
+defp do_something(item_id, params) do
+  case SomeModule.get_item(item_id) do
+    {:ok, item} ->
+      case validate_params(params) do
+        {:ok, validated_params} ->
+          case SomeModule.update_item(item, validated_params) do
+            {:ok, updated_item} -> {:ok, updated_item}
+            {:error, reason} -> {:error, reason}
+          end
+        {:error, reason} -> {:error, reason}
+      end
+    {:error, reason} -> {:error, reason}
+  end
+end
+```
+
+## Good example
+```elixir
+defp do_something(item_id, params) do
+  with {:ok, item} <- SomeModule.get_item(item_id),
+       {:ok, validated_params} <- validate_params(params),
+       {:ok, updated_item} <- SomeModule.update_item(item, validated_params) do
+    {:ok, updated_item}
+  else
+    {:error, :not_found} -> {:error, "Item not found"}
+    {:error, :invalid_params} -> {:error, "Invalid parameters"}
+    {:error, reason} -> {:error, reason}
+  end
+end
+```
+
+# Avoid try/rescue - Use Pattern Matching or Let it Crash
+Don't catch exceptions with `try/rescue`. Use pattern matching for expected failures and let unexpected errors crash (supervisor will handle restart).
+
+## Bad example
+```elixir
+defp do_something(value_string) do
+  try do
+    value = String.to_integer(value_string)
+    {:ok, value}
+  rescue
+    ArgumentError -> {:error, "Invalid value"}
+  end
+end
+```
+
+## Good example
+```elixir
+defp do_something(value_string) when is_binary(value_string) do
+  case Integer.parse(value_string) do
+    {value, ""} when value >= 0 -> {:ok, value}
+    _ -> {:error, "Invalid value"}
+  end
+end
+
+defp do_something(_), do: {:error, "Invalid input"}
+```
+
+# Use Proper Error Handling Patterns
+Return tagged tuples `{:ok, result}` or `{:error, reason}` for operations that can fail. Use bang functions only when you want the process to crash on failure.
+
+## Bad example
+```elixir
+defp do_something(email) do
+  Repo.get_by!(SomeRecord, email: email)
+end
+```
+
+## Good example
+```elixir
+defp do_something(email) do
+  case Repo.get_by(SomeRecord, email: email) do
+    nil -> {:error, :not_found}
+    record -> {:ok, record}
+  end
+end
+```
+
+# Use Pipe Operator for Data Transformations
+Chain operations using the pipe operator when transforming data through multiple steps.
+
+## Bad example
+```elixir
+defp do_something(items) do
+  filtered_items = Enum.filter(items, &(&1.active))
+  sorted_items = Enum.sort_by(filtered_items, &(&1.name))
+  Enum.map(sorted_items, &format_item/1)
+end
+```
+
+## Good example
+```elixir
+defp do_something(items) do
+  items
+  |> Enum.filter(&(&1.active))
+  |> Enum.sort_by(&(&1.name))
+  |> Enum.map(&format_item/1)
+end
+```
+
+# Use Proper LiveView Assignment Patterns
+In Phoenix LiveView, use the provided helper functions and follow proper assignment patterns.
+
+## Bad example
+```elixir
+def mount(_params, session, socket) do
+  item = get_item_from_session(session)
+  data = get_data_from_params(session)
+  socket = assign(socket, :current_item, item)
+  socket = assign(socket, :current_data, data)
+  {:ok, socket}
+end
+```
+
+## Good example
+```elixir
+def mount(_params, session, socket) do
+  socket =
+    socket
+    |> assign_defaults(session)
+
+  {:ok, socket}
+end
+
+def handle_params(params, url, socket) do
+  socket =
+    socket
+    |> assign_from_handle_params(params, url)
+
+  {:noreply, socket}
+end
+```
+
+# Use Proper Module Organization
+Organize modules with public functions first, followed by private functions, and group related functionality together.
+
+## Bad example
+```elixir
+defmodule SomeModule do
+  defp validate_data(data), do: # ...
+  
+  def do_something(params), do: # ...
+  
+  defp transform_data(data), do: # ...
+  
+  def do_something_else(item, params), do: # ...
+  
+  defp send_notification(item), do: # ...
+end
+```
+
+## Good example
+```elixir
+defmodule SomeModule do
+  # Public API
+  def do_something(params) do
+    with {:ok, validated_params} <- validate_params(params),
+         {:ok, item} <- create_item(validated_params),
+         :ok <- send_notification(item) do
+      {:ok, item}
+    end
+  end
+
+  def do_something_else(item, params) do
+    # implementation
+  end
+
+  # Private functions
+  defp validate_params(params) do
+    # validation logic
+  end
+
+  defp create_item(params) do
+    # creation logic
+  end
+
+  defp send_notification(item) do
+    # notification logic
+  end
+end
+```
+
+# Use Proper Documentation
+Document public functions with proper `@doc` and `@spec` attributes. Include examples when helpful.
+
+## Bad example
+```elixir
+def do_something(params) do
+  # creates an item
+end
+```
+
+## Good example
+```elixir
+@doc """
+Creates a new item with the given parameters.
+
+## Parameters
+- `params` - A map containing item attributes
+
+## Returns
+- `{:ok, item}` on success
+- `{:error, changeset}` on validation failure
+
+## Examples
+    iex> do_something(%{name: "Item", value: "example@test.com"})
+    {:ok, %SomeRecord{}}
+"""
+@spec do_something(map()) :: {:ok, SomeRecord.t()} | {:error, Ecto.Changeset.t()}
+def do_something(params) do
+  # implementation
+end
+```
+
+# Use Proper Test Organization
+Organize tests with clear descriptions and proper setup/teardown. Use descriptive test names and group related tests.
+
+## Bad example
+```elixir
+test "item creation" do
+  params = %{name: "Test"}
+  assert {:ok, item} = SomeModule.do_something(params)
+  assert {:error, _} = SomeModule.do_something(%{})
+end
+```
+
+## Good example
+```elixir
+describe "do_something/1" do
+  test "creates item with valid parameters" do
+    params = %{name: "Test", value: "test@example.com"}
+    
+    assert {:ok, item} = SomeModule.do_something(params)
+    assert item.name == "Test"
+    assert item.value == "test@example.com"
+  end
+
+  test "returns error with invalid parameters" do
+    params = %{name: ""}
+    
+    assert {:error, changeset} = SomeModule.do_something(params)
+    assert changeset.errors[:name]
+  end
+
+  test "returns error when value is already taken" do
+    insert(:some_record, value: "test@example.com")
+    params = %{name: "Test", value: "test@example.com"}
+    
+    assert {:error, changeset} = SomeModule.do_something(params)
+    assert changeset.errors[:value]
+  end
+end
+```
+
+# Use Enum Functions Appropriately
+Choose the right Enum function for the task. Don't use `Enum.map/2` when you need `Enum.each/2`, and vice versa.
+
+## Bad example
+```elixir
+defp do_something(items) do
+  Enum.map(items, fn item ->
+    Logger.info("Processing item #{item.id}")
+    notify_item(item)
+  end)
+  :ok
+end
+```
+
+## Good example
+```elixir
+defp do_something(items) do
+  Enum.each(items, fn item ->
+    Logger.info("Processing item #{item.id}")
+    notify_item(item)
+  end)
+end
+```
+
+# Handle Empty Collections Properly
+Explicitly handle empty collections rather than assuming they won't be empty.
+
+## Bad example
+```elixir
+defp do_something(items) do
+  total_value = Enum.sum(Enum.map(items, & &1.value))
+  average_value = total_value / length(items)
+  %{count: length(items), average_value: average_value}
+end
+```
+
+## Good example
+```elixir
+defp do_something([]), do: %{count: 0, average_value: 0}
+
+defp do_something(items) when is_list(items) do
+  total_value = Enum.sum(Enum.map(items, & &1.value))
+  count = length(items)
+  %{count: count, average_value: total_value / count}
+end
+```
+
+# Use Proper Changeset Patterns
+In Ecto changesets, use proper validation and casting patterns.
+
+## Bad example
+```elixir
+def changeset(record, attrs) do
+  record
+  |> cast(attrs, [:name, :email, :value])
+  |> validate_required([:name, :email])
+  |> validate_format(:email, ~r/@/)
+end
+```
+
+## Good example
+```elixir
+def changeset(record, attrs) do
+  record
+  |> cast(attrs, [:name, :email, :value])
+  |> validate_required([:name, :email])
+  |> validate_format(:email, ~r/^[^\s]+@[^\s]+\.[^\s]+$/)
+  |> validate_length(:name, min: 2, max: 100)
+  |> validate_number(:value, greater_than: 0, less_than: 150)
+  |> unique_constraint(:email)
+end
+```
+
+# Use Proper Task and Async Patterns
+Use Task module appropriately for concurrent operations and avoid blocking the main process unnecessarily.
+
+## Bad example
+```elixir
+defp do_something(item_ids) do
+  Enum.map(item_ids, fn item_id ->
+    # This blocks on each HTTP call sequentially
+    HTTPClient.get("/items/#{item_id}")
+  end)
+end
+```
+
+## Good example
+```elixir
+defp do_something(item_ids) do
+  item_ids
+  |> Enum.map(&Task.async(fn -> HTTPClient.get("/items/#{&1}") end))
+  |> Task.await_many(5_000)
+end
+
+# Or for fire-and-forget operations
+defp send_notifications_async(items) do
+  Enum.each(items, fn item ->
+    Task.start(fn -> SomeModule.send(item) end)
+  end)
+end
+```
+
+# Use Proper Phoenix Context Patterns
+Organize business logic in contexts and maintain clear boundaries between domains.
+
+## Bad example
+```elixir
+defmodule SomeAppWeb.ItemController do
+  def create(conn, %{"item" => item_params}) do
+    changeset = SomeRecord.changeset(%SomeRecord{}, item_params)
+    
+    case Repo.insert(changeset) do
+      {:ok, item} ->
+        # Send email directly in controller
+        SomeMailer.welcome_email(item) |> Mailer.deliver()
+        # Update cache directly in controller
+        Cache.put("item_#{item.id}", item)
+        render(conn, "show.json", item: item)
+      {:error, changeset} ->
+        render(conn, "error.json", changeset: changeset)
+    end
+  end
+end
+```
+
+## Good example
+```elixir
+defmodule SomeApp.SomeContext do
+  def do_something(attrs) do
+    %SomeRecord{}
+    |> SomeRecord.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+         {:ok, item} -> handle_successful_creation(item)
+         {:error, changeset} -> {:error, changeset}
+       end
+  end
+  
+  defp handle_successful_creation(item) do
+    Task.start(fn -> 
+      SomeMailer.welcome_email(item) |> Mailer.deliver()
+    end)
+    Cache.put("item_#{item.id}", item)
+    {:ok, item}
+  end
+end
+
+defmodule SomeAppWeb.ItemController do
+  def create(conn, %{"item" => item_params}) do
+    case SomeContext.do_something(item_params) do
+      {:ok, item} ->
+        render(conn, "show.json", item: item)
+      {:error, changeset} ->
+        render(conn, "error.json", changeset: changeset)
+    end
+  end
+end
+```
+
+# Use Proper Configuration Patterns
+Use proper configuration management with compile-time and runtime configurations.
+
+## Bad example
+```elixir
+defmodule SomeModule do
+  def api_key do
+    "hardcoded-api-key-123"  # Never do this!
+  end
+  
+  def base_url do
+    case Mix.env() do
+      :prod -> "https://api.production.com"
+      :dev -> "https://api.staging.com"
+      :test -> "https://api.test.com"
+    end
+  end
+end
+```
+
+## Good example
+```elixir
+# config/config.exs
+config :some_app, SomeModule,
+  base_url: "https://api.staging.com"
+
+# config/prod.exs  
+config :some_app, SomeModule,
+  base_url: "https://api.production.com"
+
+# config/runtime.exs
+config :some_app, SomeModule,
+  api_key: System.get_env("API_KEY") || raise("API_KEY not set")
+
+# lib/some_app/some_module.ex
+defmodule SomeModule do
+  @config Application.compile_env(:some_app, __MODULE__)
+  
+  def api_key, do: Application.get_env(:some_app, __MODULE__)[:api_key]
+  def base_url, do: @config[:base_url]
+end
+```
+
+# Use Proper Debugging and Logging Patterns
+Use appropriate logging levels and avoid debug code in production.
+
+## Bad example
+```elixir
+defp do_something(item) do
+  IO.inspect(item, label: "Processing item")  # Never use IO.inspect in production!
+  
+  case SomeGateway.process(item) do
+    {:ok, result} -> 
+      IO.puts("Processing successful!")  # Use proper logging
+      {:ok, result}
+    {:error, reason} -> 
+      IO.puts("Processing failed: #{reason}")  # Use proper logging
+      {:error, reason}
+  end
+end
+```
+
+## Good example
+```elixir
+require Logger
+
+defp do_something(item) do
+  Logger.info("Processing item for value: #{item.value}")
+  
+  case SomeGateway.process(item) do
+    {:ok, result} -> 
+      Logger.info("Processing completed successfully", %{
+        item_id: item.id,
+        result_id: result.id
+      })
+      {:ok, result}
+    {:error, reason} -> 
+      Logger.error("Processing failed", %{
+        item_id: item.id,
+        reason: reason
+      })
+      {:error, reason}
+  end
+end
+``` 
+
+# Context functions wrapping Ecto functions should return what the Ecto function normally returns
+E.g. if a function wraps Repo.all() it should return a list, not a tuple.
+
+## Bad example
+```elixir
+def do_something(thread_id) do
+    items =
+      SomeRecord
+      |> where([sr], sr.thread_id == ^thread_id)
+      |> order_by([sr], sr.created_at)
+      |> Repo.all()
+
+    {:ok, items}
+end
+```
+
+  ## Good example
+```elixir
+def do_something(thread_id) do
+    SomeRecord
+    |> where([sr], sr.thread_id == ^thread_id)
+    |> order_by([sr], sr.created_at)
+    |> Repo.all()
+end
+```
